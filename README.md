@@ -2,8 +2,8 @@
 
 一个纯静态网页,在浏览器里直接跑 dontbesilent 的 17 个商业诊断 skill。
 
-> **当前公网地址**(本地启动 + cloudflared 隧道,你电脑一关就失效):
-> `https://white-rewards-ventures-named.trycloudflare.com`
+> **永久公网地址**(GitHub Pages 托管,7×24 在线):
+> 👉 **https://jy1529098645-gif.github.io/IPskill/**
 
 ---
 
@@ -213,14 +213,21 @@ H:\IPskills\dbskill-frontend\
 
 ## 8. 公网分享(已部署)
 
-公网地址 `https://white-rewards-ventures-named.trycloudflare.com` 是用 cloudflared 免费 quick tunnel 暴露的:
+**永久 URL:** https://jy1529098645-gif.github.io/IPskill/
 
-- 后台进程:`npx serve -p 8080`(PID 12736)+ `cloudflared tunnel`(PID 9624)
-- **你电脑一关 / 一睡 / 一重启 → 链接失效**
-- 重启 cloudflared → URL 会变(`trycloudflare.com` 是随机子域名)
-- 想要永久固定地址,推荐 GitHub Pages 部署(纯静态站,白用)
+托管在 **GitHub Pages** 免费档:
+- 24/7 在线,不依赖本机电脑是否开机
+- URL 永久不变
+- 全球 CDN 加速
+- 每次 `git push` 到 `main` 分支,Pages 会自动重新部署(约 1-2 分钟)
 
-**停掉的命令**:`Stop-Process -Id 12736,9624 -Force`
+更新 skill 内容流程:
+
+```powershell
+cd H:\IPskills\dbskill && git pull          # 1. 拉最新的 dbskill 内容
+cd ..\dbskill-frontend && node build.mjs    # 2. 重打包 skills-data.js
+git add skills-data.js && git commit -m "Update skills" && git push   # 3. 推到 GitHub,Pages 自动重新发布
+```
 
 ## 9. 安全注意
 
