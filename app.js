@@ -147,6 +147,7 @@
 
   function switchConv(id) {
     if (!state.conversations[id]) return;
+    if (isStreaming) { flashStatus('回答生成中,等结束再切对话'); return; }
     state.activeId = id;
     state.currentSkill = state.conversations[id].skill;
     saveState();
@@ -229,6 +230,7 @@
 
   function selectSkill(name) {
     if (!SKILLS[name] || SKILLS[name].hidden) return;
+    if (isStreaming) { flashStatus('回答生成中,等结束再切 skill'); return; }
     state.currentSkill = name;
 
     let conv = currentConv();
@@ -299,18 +301,44 @@
       row.innerHTML = `
         <div class="flex items-center gap-1.5">
           <span class="text-sm leading-none shrink-0">${s?.icon || '•'}</span>
-          <span class="font-medium text-[12px] truncate flex-1">${escapeHTML(c.title || '(新对话)')}</span>
+          <span class="conv-title font-medium text-[12px] truncate flex-1" title="双击改名">${escapeHTML(c.title || '(新对话)')}</span>
           <button class="conv-del opacity-0 group-hover:opacity-100 text-base leading-none ${isActive ? 'text-stone-300 hover:text-red-300' : 'text-stone-400 hover:text-red-600'}" title="删除对话">×</button>
         </div>
-        <div class="text-[10px] ${isActive ? 'text-stone-300' : 'text-stone-500'} truncate pl-[22px] mt-0.5">${escapeHTML(c.project)} · ${escapeHTML(formatDate(c.updatedAt))} · ${c.messages.length} 条</div>
+        <div class="text-[10px] ${isActive ? 'text-stone-300' : 'text-stone-500'} truncate pl-[22px] mt-0.5">${escapeHTML(c.project)} · ${escapeHTML(formatDate(c.updatedAt))} · ${c.messages.filter(m => m.role !== 'divider').length} 条</div>
       `;
       row.addEventListener('click', (e) => {
         if (e.target.closest('.conv-del')) return;
+        if (e.target.closest('.conv-title-input')) return;
         switchConv(c.id);
       });
       row.querySelector('.conv-del').addEventListener('click', (e) => {
         e.stopPropagation();
         if (confirm(`删除对话 "${c.title}"?`)) deleteConv(c.id);
+      });
+      const titleEl = row.querySelector('.conv-title');
+      titleEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.className = 'conv-title-input bg-transparent border-b border-current outline-none text-[12px] font-medium flex-1 min-w-0';
+        input.value = c.title || '';
+        titleEl.replaceWith(input);
+        input.focus();
+        input.select();
+        const commit = () => {
+          const v = input.value.trim();
+          if (v && v !== c.title) {
+            c.title = v.slice(0, 60);
+            touchConv(c);
+            saveState();
+          }
+          renderConvList();
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+          else if (ev.key === 'Escape') { input.value = c.title; renderConvList(); }
+        });
+        input.addEventListener('click', (ev) => ev.stopPropagation());
       });
       convListEl.appendChild(row);
     }
@@ -336,13 +364,27 @@
 
     if (!conv) {
       const empty = document.createElement('div');
-      empty.className = 'empty-hint mx-auto';
-      empty.innerHTML = `
-        <div class="text-4xl mb-3 opacity-50">💬</div>
-        <div class="font-medium text-stone-700 mb-1.5">还没有对话</div>
-        <div class="text-[12px] leading-relaxed text-stone-500">点左上角 + 新对话,或选一个 skill 开始</div>
-      `;
-      messagesEl.appendChild(empty);
+      if (!state.apiKey) {
+        // First-run hero: prominent CTA to set API key
+        empty.className = 'hero-empty';
+        empty.innerHTML = `
+          <div class="hero-icon">🔑</div>
+          <h2>先配置 API Key</h2>
+          <p>这个工具是 BYOK(自带 API Key)的 — 你自己付费给 Anthropic,我不经手任何模型调用。<br><br>没 Key 就去 <a href="https://console.anthropic.com/" target="_blank" rel="noopener" class="underline text-stone-700 hover:text-stone-900">console.anthropic.com</a> 申请一个,绑卡充值 5 美元就够用很久。</p>
+          <button class="btn-primary" id="hero-open-settings" style="padding: 8px 18px;">打开设置填入 Key</button>
+        `;
+        messagesEl.appendChild(empty);
+        const heroBtn = empty.querySelector('#hero-open-settings');
+        if (heroBtn) heroBtn.addEventListener('click', openSettings);
+      } else {
+        empty.className = 'hero-empty';
+        empty.innerHTML = `
+          <div class="hero-icon">💬</div>
+          <h2>开始一个对话</h2>
+          <p>点左上 <span class="font-medium text-stone-700">＋ 新对话</span> 开始,或从左侧选一个 skill。<br>同一个对话里可以随时切 skill,Claude 看得到完整历史。</p>
+        `;
+        messagesEl.appendChild(empty);
+      }
       return;
     }
     if (msgs.length === 0) {
@@ -357,11 +399,16 @@
       messagesEl.appendChild(empty);
       return;
     }
+    // Locate the index of the LAST assistant message — show "regenerate" only there.
+    let lastAsstIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'assistant') { lastAsstIdx = i; break; }
+    }
     for (let i = 0; i < msgs.length; i++) {
       if (msgs[i].role === 'divider') {
         appendDividerEl(msgs[i].content);
       } else {
-        appendMessageEl(msgs[i].role, msgs[i].content, i);
+        appendMessageEl(msgs[i].role, msgs[i].content, i, i === lastAsstIdx);
       }
     }
     scrollToBottom();
@@ -390,10 +437,10 @@
     return content.filter(b => b && b.type === 'text').map(b => b.text || '').join('\n\n');
   }
 
-  function appendMessageEl(role, content, index) {
+  function appendMessageEl(role, content, index, isLastAsst) {
     const isUser = role === 'user';
     const wrap = document.createElement('div');
-    wrap.className = `flex ${isUser ? 'justify-end' : 'justify-start'} group flex-col ${isUser ? 'items-end' : 'items-start'}`;
+    wrap.className = `flex ${isUser ? 'justify-end' : 'justify-start'} group flex-col ${isUser ? 'items-end' : 'items-start'} msg-enter`;
     wrap.dataset.idx = String(index);
 
     const blocks = Array.isArray(content)
@@ -424,25 +471,63 @@
       }
     }
 
-    if (!isUser) {
-      const text = extractText(content);
-      if (text) {
-        const tools = document.createElement('div');
-        tools.className = 'flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition';
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'text-[11px] text-stone-400 hover:text-stone-800 px-1.5 py-0.5 rounded hover:bg-stone-100 transition';
-        copyBtn.textContent = '复制';
-        copyBtn.onclick = () => { navigator.clipboard.writeText(text); copyBtn.textContent = '已复制'; setTimeout(() => copyBtn.textContent = '复制', 1200); };
-        tools.appendChild(copyBtn);
-        wrap.appendChild(tools);
-      }
+    // Per-message action toolbar
+    const text = extractText(content);
+    const tools = document.createElement('div');
+    tools.className = 'msg-actions' + (isLastAsst ? ' last-asst' : '');
+    if (isLastAsst) tools.style.opacity = '1';
+
+    if (text) {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-action-btn';
+      copyBtn.type = 'button';
+      copyBtn.textContent = '复制';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(text);
+        copyBtn.textContent = '已复制';
+        setTimeout(() => copyBtn.textContent = '复制', 1200);
+      };
+      tools.appendChild(copyBtn);
     }
+
+    if (isUser) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'msg-action-btn';
+      editBtn.type = 'button';
+      editBtn.textContent = '编辑';
+      editBtn.title = '编辑这条消息(之后的对话会丢失)';
+      editBtn.onclick = () => editUserMessage(index);
+      tools.appendChild(editBtn);
+    }
+
+    if (isLastAsst) {
+      const regenBtn = document.createElement('button');
+      regenBtn.className = 'msg-action-btn';
+      regenBtn.type = 'button';
+      regenBtn.textContent = '🔄 重新生成';
+      regenBtn.title = '让 LLM 基于相同上下文换个回答';
+      regenBtn.onclick = () => regenerateLastAssistant();
+      tools.appendChild(regenBtn);
+    }
+
+    if (tools.children.length > 0) wrap.appendChild(tools);
     messagesEl.appendChild(wrap);
   }
 
   function renderMarkdown(text) {
-    try { return marked.parse(text, { breaks: true, gfm: true }); }
-    catch { return escapeHTML(text); }
+    try {
+      let html = marked.parse(text, { breaks: true, gfm: true });
+      // Inject copy button into every <pre><code> block
+      html = html.replace(/<pre><code/g, '<pre><button class="code-copy" type="button">复制</button><code');
+      // Sanitize against XSS — LLM could output malicious HTML
+      if (window.DOMPurify) {
+        html = window.DOMPurify.sanitize(html, {
+          ADD_ATTR: ['target', 'rel', 'class', 'type'],
+          ADD_TAGS: ['button'],
+        });
+      }
+      return html;
+    } catch { return escapeHTML(text); }
   }
 
   function escapeHTML(str) {
@@ -451,6 +536,12 @@
 
   function scrollToBottom() {
     requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+  }
+
+  function autoResizeComposer() {
+    composerEl.style.height = 'auto';
+    const max = 220;
+    composerEl.style.height = Math.min(composerEl.scrollHeight, max) + 'px';
   }
 
   // ---------- Attachments ----------
@@ -572,7 +663,10 @@
   }
 
   // ---------- Send / Stream ----------
+  let isStreaming = false;
+
   async function send() {
+    if (isStreaming) return; // guard against double-send (Enter spam, etc.)
     const text = composerEl.value.trim();
     const hasAttachments = pendingAttachments.length > 0;
     if (!text && !hasAttachments) return;
@@ -582,6 +676,7 @@
       return;
     }
     composerEl.value = '';
+    autoResizeComposer();
     const userContent = buildUserContent(text, pendingAttachments);
     pendingAttachments.length = 0;
     renderAttachments();
@@ -594,10 +689,61 @@
     renderMessages();
     updateSkillHeader();
 
+    await streamAssistantResponse(conv);
+  }
+
+  async function regenerateLastAssistant() {
+    if (isStreaming) return;
+    const conv = currentConv();
+    if (!conv) return;
+    let idx = -1;
+    for (let i = conv.messages.length - 1; i >= 0; i--) {
+      if (conv.messages[i].role === 'assistant') { idx = i; break; }
+    }
+    if (idx < 0) { flashStatus('当前没有可重新生成的回答'); return; }
+    conv.messages.splice(idx, 1);
+    touchConv(conv);
+    saveState();
+    renderConvList();
+    renderMessages();
+    await streamAssistantResponse(conv);
+  }
+
+  function editUserMessage(index) {
+    if (isStreaming) { flashStatus('请等当前回答结束'); return; }
+    const conv = currentConv();
+    if (!conv) return;
+    const msg = conv.messages[index];
+    if (msg?.role !== 'user') return;
+    const text = extractText(msg.content);
+    const hasMedia = Array.isArray(msg.content) && msg.content.some(b => b.type === 'image' || b.type === 'document');
+    const after = conv.messages.length - index - 1;
+    const warn = after > 0
+      ? `编辑这条消息会丢失它之后的 ${after} 条对话,确认?`
+      : '编辑这条消息?';
+    if (!confirm(warn + (hasMedia ? '\n(原消息包含图片/PDF,需要重新上传)' : ''))) return;
+    conv.messages.splice(index);
+    touchConv(conv);
+    saveState();
+    renderConvList();
+    renderMessages();
+    composerEl.value = text;
+    composerEl.focus();
+    autoResizeComposer();
+    if (hasMedia) flashStatus('原消息有图片/PDF,需要重新上传');
+  }
+
+  async function streamAssistantResponse(conv, opts = {}) {
+    if (!state.apiKey) {
+      flashStatus('请先在 ⚙️ 设置里填入 Anthropic API key');
+      openSettings();
+      return;
+    }
+    isStreaming = true;
     sendBtn.disabled = true;
     stopBtn.classList.remove('hidden');
     sendBtn.classList.add('hidden');
-    setStatus('请求中…');
+    setStatus(opts.startStatus || '请求中…');
 
     const skillName = conv.skill;
     const system = buildSystemPrompt(skillName);
@@ -605,20 +751,14 @@
 
     abortController = new AbortController();
     let assistantText = '';
-    let assistantEl = null;
-    let assistantBubble = null;
-    {
-      const wrap = document.createElement('div');
-      wrap.className = 'flex justify-start flex-col items-start group';
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble-asst msg-md typing';
-      bubble.innerHTML = '<span class="text-stone-400">思考中…</span>';
-      wrap.appendChild(bubble);
-      messagesEl.appendChild(wrap);
-      scrollToBottom();
-      assistantEl = wrap;
-      assistantBubble = bubble;
-    }
+    const wrap = document.createElement('div');
+    wrap.className = 'flex justify-start flex-col items-start group msg-enter';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble-asst msg-md typing';
+    bubble.innerHTML = `<span class="text-stone-400">${escapeHTML(opts.placeholder || '思考中…')}</span>`;
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
 
     try {
       const body = {
@@ -665,7 +805,7 @@
               const data = JSON.parse(dataStr);
               if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
                 assistantText += data.delta.text;
-                assistantBubble.innerHTML = renderMarkdown(assistantText);
+                bubble.innerHTML = renderMarkdown(assistantText);
                 scrollToBottom();
               } else if (data.type === 'message_delta' && data.usage) {
                 usage = { ...(usage || {}), ...data.usage };
@@ -680,26 +820,27 @@
             }
           }
         }
-        assistantBubble.classList.remove('typing');
-        setStatus(usage ? formatUsage(usage) : '完成');
+        bubble.classList.remove('typing');
+        setStatus(usage ? formatUsage(usage) : (opts.successStatus || '完成'));
       } else {
         const data = await res.json();
         assistantText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-        assistantBubble.innerHTML = renderMarkdown(assistantText);
-        assistantBubble.classList.remove('typing');
+        bubble.innerHTML = renderMarkdown(assistantText);
+        bubble.classList.remove('typing');
         if (data.usage) setStatus(formatUsage(data.usage));
+        else setStatus(opts.successStatus || '完成');
       }
     } catch (err) {
       if (err.name === 'AbortError') {
         setStatus('已停止');
-        assistantBubble.classList.remove('typing');
-        assistantBubble.innerHTML = assistantText
+        bubble.classList.remove('typing');
+        bubble.innerHTML = assistantText
           ? renderMarkdown(assistantText + '\n\n*— 用户停止 —*')
           : '<span class="text-stone-400">已停止</span>';
       } else {
         console.error(err);
-        assistantBubble.classList.remove('typing');
-        assistantBubble.innerHTML = `<div class="text-red-600 whitespace-pre-wrap">⚠️ 出错了:\n${escapeHTML(err.message || String(err))}</div>`;
+        bubble.classList.remove('typing');
+        bubble.innerHTML = `<div class="text-red-600 whitespace-pre-wrap">⚠️ 出错了:\n${escapeHTML(err.message || String(err))}</div>`;
         setStatus('出错');
       }
     } finally {
@@ -707,27 +848,34 @@
         conv.messages.push({ role: 'assistant', content: assistantText });
         touchConv(conv);
         saveState();
-        assistantEl.remove();
+        wrap.remove();
         renderConvList();
         renderMessages();
         updateSkillHeader();
       } else {
-        assistantEl.remove();
+        wrap.remove();
       }
       sendBtn.disabled = false;
       sendBtn.classList.remove('hidden');
       stopBtn.classList.add('hidden');
       abortController = null;
+      isStreaming = false;
     }
   }
 
+  function formatTokens(n) {
+    if (!n || n < 1000) return String(n || 0);
+    if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+    return (n / 1000000).toFixed(2) + 'M';
+  }
   function formatUsage(u) {
-    const parts = [];
-    if (u.input_tokens != null) parts.push(`in ${u.input_tokens}`);
-    if (u.cache_creation_input_tokens) parts.push(`cache_create ${u.cache_creation_input_tokens}`);
-    if (u.cache_read_input_tokens) parts.push(`cache_read ${u.cache_read_input_tokens}`);
-    if (u.output_tokens != null) parts.push(`out ${u.output_tokens}`);
-    return `tokens · ${parts.join(' · ')}`;
+    const fresh = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    const cached = u.cache_read_input_tokens || 0;
+    const inTot = fresh + cached;
+    const out = u.output_tokens || 0;
+    const cacheHit = inTot > 0 && cached > 0 ? Math.round(cached / inTot * 100) : 0;
+    const cacheTag = cacheHit > 0 ? ` · cache ${cacheHit}%` : '';
+    return `↑ ${formatTokens(inTot)} · ↓ ${formatTokens(out)}${cacheTag}`;
   }
 
   function setStatus(text) { statusBar.textContent = text; }
@@ -819,8 +967,11 @@
         state.currentSkill = 'dbs-report';
         saveState();
         renderAll();
-        flashStatus(`已加载 ${archives.length} 份存档,自动触发 dbs-report 合并`);
-        await sendInjected();
+        flashStatus(`已加载 ${archives.length} 份存档,正在合并`);
+        await streamAssistantResponse(state.conversations[id], {
+          placeholder: '合并中…',
+          successStatus: '报告完成 — 可点击复制或继续追问让 LLM 调整',
+        });
       } catch (e) {
         alert('合并失败: ' + e.message);
       }
@@ -843,97 +994,6 @@
     });
     s += `\n---\n\n请按 dbs-report SKILL.md 的指引输出一份完整的合并报告。`;
     return s;
-  }
-
-  async function sendInjected() {
-    const conv = currentConv();
-    if (!conv) return;
-    if (!state.apiKey) { flashStatus('请先在 ⚙️ 设置里填入 API key'); openSettings(); return; }
-    sendBtn.disabled = true;
-    stopBtn.classList.remove('hidden');
-    sendBtn.classList.add('hidden');
-    setStatus('请求中…');
-    const skillName = conv.skill;
-    const system = buildSystemPrompt(skillName);
-    const systemBlocks = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
-    abortController = new AbortController();
-    let assistantText = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'flex justify-start flex-col items-start group';
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble-asst msg-md typing';
-    bubble.innerHTML = '<span class="text-stone-400">合并中…</span>';
-    wrap.appendChild(bubble);
-    messagesEl.appendChild(wrap);
-    scrollToBottom();
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': state.apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: state.model, max_tokens: state.maxTokens,
-          system: systemBlocks,
-          messages: conv.messages
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map(m => ({ role: m.role, content: m.content })),
-          stream: true,
-        }),
-        signal: abortController.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf('\n\n')) !== -1) {
-          const block = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-          for (const line of block.split('\n')) {
-            if (!line.startsWith('data:')) continue;
-            const ds = line.slice(5).trim();
-            if (!ds) continue;
-            try {
-              const data = JSON.parse(ds);
-              if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
-                assistantText += data.delta.text;
-                bubble.innerHTML = renderMarkdown(assistantText);
-                scrollToBottom();
-              }
-            } catch {}
-          }
-        }
-      }
-      bubble.classList.remove('typing');
-      setStatus('报告完成 — 可点击复制或继续追问让 LLM 调整');
-    } catch (err) {
-      bubble.classList.remove('typing');
-      bubble.innerHTML = `<div class="text-red-600 whitespace-pre-wrap">⚠️ ${escapeHTML(err.message || String(err))}</div>`;
-      setStatus('出错');
-    } finally {
-      if (assistantText) {
-        conv.messages.push({ role: 'assistant', content: assistantText });
-        touchConv(conv);
-        saveState();
-        wrap.remove();
-        renderConvList();
-        renderMessages();
-      } else {
-        wrap.remove();
-      }
-      sendBtn.disabled = false;
-      sendBtn.classList.remove('hidden');
-      stopBtn.classList.add('hidden');
-      abortController = null;
-    }
   }
 
   function downloadJSON(obj, filename) {
@@ -989,8 +1049,38 @@
     composerEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
+        if (isStreaming) return; // already generating, swallow Enter
         send();
       }
+    });
+    composerEl.addEventListener('input', autoResizeComposer);
+    autoResizeComposer();
+
+    // ---- Scroll-to-bottom floating button ----
+    const scrollBtn = $('scroll-to-bottom');
+    if (scrollBtn) {
+      const updateScrollBtn = () => {
+        const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+        scrollBtn.classList.toggle('hidden', atBottom);
+      };
+      messagesEl.addEventListener('scroll', updateScrollBtn);
+      scrollBtn.addEventListener('click', () => {
+        messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+      });
+      // Recheck whenever messages re-render
+      new MutationObserver(updateScrollBtn).observe(messagesEl, { childList: true });
+    }
+
+    // ---- Code-block copy buttons (event delegation) ----
+    messagesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.code-copy');
+      if (!btn) return;
+      const code = btn.parentElement?.querySelector('code');
+      if (!code) return;
+      navigator.clipboard.writeText(code.textContent || '');
+      const orig = btn.textContent;
+      btn.textContent = '已复制';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
     });
     projectInput.addEventListener('input', (e) => {
       state.project = e.target.value;
@@ -998,6 +1088,7 @@
       if (state.filterByProject) renderConvList();
     });
     newConvBtn.addEventListener('click', () => {
+      if (isStreaming) { flashStatus('回答生成中,等结束再开新对话'); return; }
       createConv(state.currentSkill);
       renderAll();
       composerEl.focus();

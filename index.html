@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -235,6 +236,75 @@
   .msg-md a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--border-strong); }
   .msg-md a:hover { text-decoration-color: var(--text); }
 
+  /* ==== Code block copy ==== */
+  .msg-md pre { position: relative; padding-top: 32px !important; }
+  .code-copy {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: 'Inter', -apple-system, sans-serif;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  .code-copy:hover { background: rgba(255,255,255,0.18); color: white; }
+  .code-copy:active { transform: scale(0.96); }
+
+  /* ==== Per-message action buttons ==== */
+  .msg-actions {
+    display: flex;
+    gap: 2px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .group:hover .msg-actions { opacity: 1; }
+  .msg-actions .last-asst { opacity: 1; }
+  .msg-action-btn {
+    font-size: 11px;
+    color: #a8a29e;
+    padding: 3px 7px;
+    border-radius: 5px;
+    transition: all 0.12s ease;
+    background: transparent;
+    cursor: pointer;
+  }
+  .msg-action-btn:hover { color: #0c0a09; background: #f5f5f4; }
+
+  /* ==== Scroll-to-bottom button ==== */
+  #scroll-to-bottom {
+    position: absolute;
+    right: 20px; bottom: 18px;
+    width: 36px; height: 36px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(12, 10, 9, 0.08), 0 4px 12px rgba(12, 10, 9, 0.06);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    z-index: 5;
+  }
+  #scroll-to-bottom:hover { background: var(--surface-hover); color: var(--text); transform: translateY(-1px); }
+
+  /* ==== First-run hero ==== */
+  .hero-empty {
+    text-align: center;
+    max-width: 380px;
+    margin: 6vh auto 0;
+    padding: 0 16px;
+  }
+  .hero-empty h2 { font-weight: 600; font-size: 17px; margin-bottom: 8px; color: var(--text); letter-spacing: -0.01em; }
+  .hero-empty p { font-size: 13px; color: var(--text-muted); line-height: 1.7; margin-bottom: 18px; }
+  .hero-empty .hero-icon { font-size: 40px; margin-bottom: 14px; }
+
   /* ==== Typing indicator ==== */
   .typing::after {
     content: '';
@@ -379,7 +449,10 @@
         <button id="btn-clear" class="text-[11px] text-stone-400 hover:text-red-600 px-2 py-1 rounded hover:bg-stone-50 transition" title="删除当前对话">🗑️ 删除</button>
       </div>
 
-      <div id="messages" class="flex-1 overflow-y-auto px-5 py-5 space-y-3"></div>
+      <div class="flex-1 relative overflow-hidden">
+        <div id="messages" class="absolute inset-0 overflow-y-auto px-5 py-5 space-y-3"></div>
+        <button id="scroll-to-bottom" class="hidden" title="回到底部">↓</button>
+      </div>
 
       <div id="drop-zone" class="border-t border-stone-200 bg-white p-3 shrink-0 relative">
         <div id="attachments-preview" class="max-w-3xl mx-auto flex flex-wrap gap-1.5 mb-2 hidden"></div>
