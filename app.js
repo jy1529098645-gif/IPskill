@@ -212,6 +212,7 @@
         const btn = document.createElement('button');
         btn.className = `skill-btn ${isActive ? 'active' : ''}`;
         btn.dataset.skill = s.name;
+        btn.title = `${s.label} · 点击在当前对话切换到此 skill(对话历史保留)`;
         btn.innerHTML = `
           <div class="flex items-center gap-2">
             <span class="text-base leading-none">${s.icon || '•'}</span>
@@ -227,18 +228,39 @@
   }
 
   function selectSkill(name) {
-    if (!SKILLS[name]) return;
+    if (!SKILLS[name] || SKILLS[name].hidden) return;
     state.currentSkill = name;
-    // Find the latest conversation for (current project if filtering, this skill).
-    const cur = state.project || '默认项目';
-    const matches = Object.values(state.conversations).filter(c =>
-      c.skill === name && (!state.filterByProject || c.project === cur)
-    ).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    if (matches.length > 0) {
-      state.activeId = matches[0].id;
-    } else {
+
+    let conv = currentConv();
+    if (!conv) {
+      // No active conversation — create a fresh one
       createConv(name);
+      saveState();
+      renderAll();
+      return;
     }
+    if (conv.skill === name) {
+      // Already on this skill — no-op but make sure UI reflects it
+      saveState();
+      renderAll();
+      return;
+    }
+
+    // Swap current conversation's skill, keep all messages so the LLM
+    // sees full history when called with the new skill's system prompt.
+    conv.skill = name;
+    const last = conv.messages[conv.messages.length - 1];
+    if (last?.role === 'divider' && last.content?.type === 'skill-switch') {
+      // User toggled skills again without sending — collapse divider
+      last.content.to = name;
+      last.content.at = new Date().toISOString();
+    } else if (conv.messages.length > 0) {
+      conv.messages.push({
+        role: 'divider',
+        content: { type: 'skill-switch', to: name, at: new Date().toISOString() }
+      });
+    }
+    touchConv(conv);
     saveState();
     renderAll();
   }
@@ -336,9 +358,30 @@
       return;
     }
     for (let i = 0; i < msgs.length; i++) {
-      appendMessageEl(msgs[i].role, msgs[i].content, i);
+      if (msgs[i].role === 'divider') {
+        appendDividerEl(msgs[i].content);
+      } else {
+        appendMessageEl(msgs[i].role, msgs[i].content, i);
+      }
     }
     scrollToBottom();
+  }
+
+  function appendDividerEl(content) {
+    if (!content || content.type !== 'skill-switch') return;
+    const s = SKILLS[content.to];
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-3 my-2 px-2 text-stone-400 text-[11px] select-none';
+    div.innerHTML = `
+      <div class="flex-1 h-px bg-stone-200"></div>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-stone-100 rounded-full">
+        <span>切换到</span>
+        <span>${escapeHTML(s?.icon || '•')}</span>
+        <span class="font-medium text-stone-600">${escapeHTML(s?.label || content.to)}</span>
+      </span>
+      <div class="flex-1 h-px bg-stone-200"></div>
+    `;
+    messagesEl.appendChild(div);
   }
 
   function extractText(content) {
@@ -524,7 +567,7 @@
     }
     const conv = currentConv();
     const project = conv?.project || state.project || '默认项目';
-    prompt += `\n\n---\n\n# 当前会话上下文\n- 当前项目: ${project}\n- 当前 skill: ${skillName}\n- 你正在通过一个浏览器前端运行,无法访问本地文件系统。如果 skill 提到"写入 ~/.dbs/sessions/" 这类本地操作,请改为把对应 JSON 内容贴到对话里,用户会通过界面的"存档"按钮自行保存。\n`;
+    prompt += `\n\n---\n\n# 当前会话上下文\n- 当前项目: ${project}\n- 当前 skill: ${skillName}\n- 你正在通过一个浏览器前端运行,无法访问本地文件系统。如果 skill 提到"写入 ~/.dbs/sessions/" 这类本地操作,请改为把对应 JSON 内容贴到对话里,用户会通过界面的"存档"按钮自行保存。\n- 重要:用户在同一对话里可能切换过 skill。你看到的对话历史可能包含其他 skill 给出的回应。请基于完整对话历史,但用本 skill 的方法论回应用户最新的输入,不要重复让用户描述背景。\n`;
     return prompt;
   }
 
@@ -582,7 +625,9 @@
         model: state.model,
         max_tokens: state.maxTokens,
         system: systemBlocks,
-        messages: conv.messages.map(m => ({ role: m.role, content: m.content })),
+        messages: conv.messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({ role: m.role, content: m.content })),
         stream: !!state.streaming,
       };
       const res = await fetch(API_URL, {
@@ -833,7 +878,9 @@
         body: JSON.stringify({
           model: state.model, max_tokens: state.maxTokens,
           system: systemBlocks,
-          messages: conv.messages.map(m => ({ role: m.role, content: m.content })),
+          messages: conv.messages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({ role: m.role, content: m.content })),
           stream: true,
         }),
         signal: abortController.signal,
