@@ -1,0 +1,30 @@
+# Local Claude Code / agent state
+.claude/
+.agents/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Secrets — never commit
+.env
+.env.local
+*.key
+*.pem
+
+# Cloudflared local logs
+cloudflared-*.log
+*.log
