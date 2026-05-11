@@ -1,6 +1,8 @@
-# dbskill 前端 — 完整使用报告
+# 小红书内容诊断工具箱
 
-一个纯静态网页,在浏览器里直接跑 dontbesilent 的 17 个商业诊断 skill。
+一个纯静态网页,在浏览器里直接跑 13 个内容诊断 skill,帮你做选题、起标题、查 AI 味、找对标、优化开头。
+
+基于 [dontbesilent2025/dbskill](https://github.com/dontbesilent2025/dbskill) 的 17 个 skill 精选打包,把跟内容诊断无关的 4 个 skill 隐藏。
 
 > **永久公网地址**(GitHub Pages 托管,7×24 在线):
 > 👉 **https://jy1529098645-gif.github.io/IPskill/**

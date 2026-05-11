@@ -195,6 +195,7 @@
     const skillsByGroup = {};
     for (const name of Object.keys(SKILLS)) {
       const s = SKILLS[name];
+      if (s.hidden) continue; // skip hidden skills (still accessible via routing / UI buttons)
       const g = s.group || '其他';
       if (!skillsByGroup[g]) skillsByGroup[g] = [];
       skillsByGroup[g].push(s);
@@ -908,6 +909,7 @@
   // ---------- Settings dialog ----------
   function openSettings() {
     apiKeyInput.value = state.apiKey || '';
+    modelSelect.value = state.model;
     maxTokensInput.value = state.maxTokens;
     loadKnowledgeInput.checked = state.loadKnowledge;
     streamingInput.checked = state.streaming;
@@ -917,6 +919,7 @@
   function closeSettings(save) {
     if (save) {
       state.apiKey = apiKeyInput.value.trim();
+      state.model = modelSelect.value;
       state.maxTokens = Math.max(512, Math.min(64000, parseInt(maxTokensInput.value) || 8192));
       state.loadKnowledge = !!loadKnowledgeInput.checked;
       state.streaming = !!streamingInput.checked;
@@ -931,7 +934,6 @@
   function init() {
     if (!SKILLS[state.currentSkill]) state.currentSkill = 'dbs';
     projectInput.value = state.project || '';
-    modelSelect.value = state.model;
 
     renderAll();
 
@@ -948,8 +950,6 @@
       saveState();
       if (state.filterByProject) renderConvList();
     });
-    modelSelect.addEventListener('change', (e) => { state.model = e.target.value; saveState(); });
-
     newConvBtn.addEventListener('click', () => {
       createConv(state.currentSkill);
       renderAll();
@@ -1012,7 +1012,8 @@
     if (!state.apiKey) {
       setStatus('请先点 ⚙️ 填入 Anthropic API key 才能开始对话');
     } else {
-      setStatus(`已就绪 · ${Object.keys(SKILLS).length} 个 skill · ${Object.keys(state.conversations).length} 个历史对话`);
+      const visibleSkills = Object.values(SKILLS).filter(s => !s.hidden).length;
+      setStatus(`已就绪 · ${visibleSkills} 个 skill · ${Object.keys(state.conversations).length} 个历史对话`);
     }
   }
 
