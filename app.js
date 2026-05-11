@@ -204,19 +204,19 @@
       if (!skillsByGroup[g]) continue;
       const groupEl = document.createElement('div');
       groupEl.className = 'mb-3';
-      groupEl.innerHTML = `<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 mb-1">${escapeHTML(g)}</div>`;
+      groupEl.innerHTML = `<div class="section-label mb-1">${escapeHTML(g)}</div>`;
       for (const s of skillsByGroup[g]) {
         const desc = (s.description || '').split('\n')[0].slice(0, 60);
         const isActive = state.currentSkill === s.name;
         const btn = document.createElement('button');
-        btn.className = `skill-btn w-full text-left px-2.5 py-1.5 rounded mb-0.5 hover:bg-slate-100 transition ${isActive ? 'active' : ''}`;
+        btn.className = `skill-btn ${isActive ? 'active' : ''}`;
         btn.dataset.skill = s.name;
         btn.innerHTML = `
           <div class="flex items-center gap-2">
-            <span class="text-base">${s.icon || '•'}</span>
-            <span class="font-medium text-sm truncate">${escapeHTML(s.label)}</span>
+            <span class="text-base leading-none">${s.icon || '•'}</span>
+            <span class="font-medium text-[13px] truncate">${escapeHTML(s.label)}</span>
           </div>
-          <div class="skill-desc text-xs text-slate-500 truncate pl-7">${escapeHTML(desc)}</div>
+          <div class="skill-desc text-[11px] truncate pl-7 mt-0.5">${escapeHTML(desc)}</div>
         `;
         btn.addEventListener('click', () => selectSkill(s.name));
         groupEl.appendChild(btn);
@@ -265,21 +265,21 @@
     filterProjectInput.checked = !!state.filterByProject;
 
     if (convs.length === 0) {
-      convListEl.innerHTML = '<div class="text-xs text-slate-400 px-2 py-3 text-center leading-relaxed">还没有对话<br>点上面 ＋新对话开始</div>';
+      convListEl.innerHTML = '<div class="text-[11px] text-stone-400 px-2 py-4 text-center leading-relaxed">还没有对话<br>点上面 + 新对话开始</div>';
       return;
     }
     for (const c of convs) {
       const s = SKILLS[c.skill];
       const isActive = c.id === state.activeId;
       const row = document.createElement('div');
-      row.className = `conv-row group cursor-pointer px-2 py-1.5 rounded mb-0.5 ${isActive ? 'bg-slate-900 text-white' : 'hover:bg-slate-100 text-slate-800'}`;
+      row.className = `conv-row group ${isActive ? 'active' : ''}`;
       row.innerHTML = `
-        <div class="flex items-center gap-1.5 mb-0.5">
-          <span class="text-sm shrink-0">${s?.icon || '•'}</span>
-          <span class="font-medium text-xs truncate flex-1">${escapeHTML(c.title || '(新对话)')}</span>
-          <button class="conv-del opacity-0 group-hover:opacity-100 text-base leading-none ${isActive ? 'text-slate-300 hover:text-red-300' : 'text-slate-400 hover:text-red-600'}" title="删除对话">×</button>
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm leading-none shrink-0">${s?.icon || '•'}</span>
+          <span class="font-medium text-[12px] truncate flex-1">${escapeHTML(c.title || '(新对话)')}</span>
+          <button class="conv-del opacity-0 group-hover:opacity-100 text-base leading-none ${isActive ? 'text-stone-300 hover:text-red-300' : 'text-stone-400 hover:text-red-600'}" title="删除对话">×</button>
         </div>
-        <div class="text-[10px] ${isActive ? 'text-slate-300' : 'text-slate-400'} truncate pl-5">${escapeHTML(c.project)} · ${escapeHTML(formatDate(c.updatedAt))} · ${c.messages.length} 条</div>
+        <div class="text-[10px] ${isActive ? 'text-stone-300' : 'text-stone-500'} truncate pl-[22px] mt-0.5">${escapeHTML(c.project)} · ${escapeHTML(formatDate(c.updatedAt))} · ${c.messages.length} 条</div>
       `;
       row.addEventListener('click', (e) => {
         if (e.target.closest('.conv-del')) return;
@@ -313,11 +313,11 @@
 
     if (!conv) {
       const empty = document.createElement('div');
-      empty.className = 'text-center text-slate-400 text-sm mt-12 max-w-md mx-auto';
+      empty.className = 'empty-hint mx-auto';
       empty.innerHTML = `
-        <div class="text-4xl mb-3">💬</div>
-        <div class="font-medium text-slate-600 mb-1">还没有对话</div>
-        <div class="text-xs leading-relaxed">点左上角 ＋新对话,或选一个 skill 开始</div>
+        <div class="text-4xl mb-3 opacity-50">💬</div>
+        <div class="font-medium text-stone-700 mb-1.5">还没有对话</div>
+        <div class="text-[12px] leading-relaxed text-stone-500">点左上角 + 新对话,或选一个 skill 开始</div>
       `;
       messagesEl.appendChild(empty);
       return;
@@ -325,11 +325,11 @@
     if (msgs.length === 0) {
       const s = SKILLS[conv.skill];
       const empty = document.createElement('div');
-      empty.className = 'text-center text-slate-400 text-sm mt-12 max-w-md mx-auto';
+      empty.className = 'empty-hint mx-auto';
       empty.innerHTML = `
-        <div class="text-4xl mb-3">${s.icon || '•'}</div>
-        <div class="font-medium text-slate-600 mb-1">${escapeHTML(s.label)}</div>
-        <div class="text-xs leading-relaxed">${escapeHTML((s.description || '').split('\n').slice(0, 4).join(' '))}</div>
+        <div class="text-4xl mb-3 opacity-80">${s.icon || '•'}</div>
+        <div class="font-medium text-stone-700 mb-1.5">${escapeHTML(s.label)}</div>
+        <div class="text-[12px] leading-relaxed text-stone-500">${escapeHTML((s.description || '').split('\n').slice(0, 4).join(' '))}</div>
       `;
       messagesEl.appendChild(empty);
       return;
@@ -361,22 +361,20 @@
       if (b.type === 'text') {
         if (!b.text) continue;
         const bubble = document.createElement('div');
-        bubble.className = isUser
-          ? 'max-w-[80%] bg-slate-900 text-white rounded-2xl rounded-tr-md px-4 py-2.5 text-sm whitespace-pre-wrap break-words mb-1'
-          : 'max-w-[88%] bg-white border border-slate-200 rounded-2xl rounded-tl-md px-4 py-3 text-sm msg-md break-words mb-1';
+        bubble.className = isUser ? 'bubble-user mb-1' : 'bubble-asst msg-md mb-1';
         if (isUser) bubble.textContent = b.text;
         else bubble.innerHTML = renderMarkdown(b.text);
         wrap.appendChild(bubble);
       } else if (b.type === 'image' && b.source?.data) {
         const img = document.createElement('img');
         img.src = `data:${b.source.media_type || 'image/png'};base64,${b.source.data}`;
-        img.className = 'max-w-[260px] max-h-[260px] rounded-lg border border-slate-300 mb-1 cursor-pointer';
+        img.className = 'max-w-[260px] max-h-[260px] rounded-xl border border-stone-200 mb-1 cursor-pointer shadow-sm hover:shadow transition';
         img.title = '点击放大';
         img.onclick = () => window.open(img.src, '_blank');
         wrap.appendChild(img);
       } else if (b.type === 'document') {
         const doc = document.createElement('div');
-        doc.className = 'bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-xs mb-1 inline-flex items-center gap-1.5';
+        doc.className = 'bg-stone-100 border border-stone-200 rounded-xl px-3 py-2 text-xs mb-1 inline-flex items-center gap-1.5';
         doc.innerHTML = '<span>📄</span><span>PDF 附件</span>';
         wrap.appendChild(doc);
       }
@@ -386,9 +384,9 @@
       const text = extractText(content);
       if (text) {
         const tools = document.createElement('div');
-        tools.className = 'flex gap-1 mt-0.5 opacity-0 group-hover:opacity-100 transition';
+        tools.className = 'flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition';
         const copyBtn = document.createElement('button');
-        copyBtn.className = 'text-xs text-slate-400 hover:text-slate-700 px-1';
+        copyBtn.className = 'text-[11px] text-stone-400 hover:text-stone-800 px-1.5 py-0.5 rounded hover:bg-stone-100 transition';
         copyBtn.textContent = '复制';
         copyBtn.onclick = () => { navigator.clipboard.writeText(text); copyBtn.textContent = '已复制'; setTimeout(() => copyBtn.textContent = '复制', 1200); };
         tools.appendChild(copyBtn);
@@ -471,13 +469,13 @@
     attachmentsPreview.innerHTML = '';
     pendingAttachments.forEach((a, i) => {
       const chip = document.createElement('div');
-      chip.className = 'inline-flex items-center gap-1.5 bg-slate-100 border border-slate-300 rounded-full px-2.5 py-1 text-xs';
+      chip.className = 'attach-chip';
       const icon = a.kind === 'image' ? '🖼️' : a.kind === 'pdf' ? '📄' : '📝';
       chip.innerHTML = `
         <span>${icon}</span>
         <span class="font-medium max-w-[180px] truncate">${escapeHTML(a.name)}</span>
-        <span class="text-slate-400">${formatSize(a.size)}</span>
-        <button type="button" class="text-slate-400 hover:text-red-600 ml-1 text-base leading-none" aria-label="移除">×</button>
+        <span class="text-stone-400">${formatSize(a.size)}</span>
+        <button type="button" class="text-stone-400 hover:text-red-600 ml-1 text-base leading-none" aria-label="移除">×</button>
       `;
       chip.querySelector('button').addEventListener('click', () => {
         pendingAttachments.splice(i, 1);
@@ -569,8 +567,8 @@
       const wrap = document.createElement('div');
       wrap.className = 'flex justify-start flex-col items-start group';
       const bubble = document.createElement('div');
-      bubble.className = 'max-w-[88%] bg-white border border-slate-200 rounded-2xl rounded-tl-md px-4 py-3 text-sm msg-md typing break-words';
-      bubble.innerHTML = '<span class="text-slate-400">思考中…</span>';
+      bubble.className = 'bubble-asst msg-md typing';
+      bubble.innerHTML = '<span class="text-stone-400">思考中…</span>';
       wrap.appendChild(bubble);
       messagesEl.appendChild(wrap);
       scrollToBottom();
@@ -651,7 +649,7 @@
         assistantBubble.classList.remove('typing');
         assistantBubble.innerHTML = assistantText
           ? renderMarkdown(assistantText + '\n\n*— 用户停止 —*')
-          : '<span class="text-slate-400">已停止</span>';
+          : '<span class="text-stone-400">已停止</span>';
       } else {
         console.error(err);
         assistantBubble.classList.remove('typing');
@@ -817,8 +815,8 @@
     const wrap = document.createElement('div');
     wrap.className = 'flex justify-start flex-col items-start group';
     const bubble = document.createElement('div');
-    bubble.className = 'max-w-[88%] bg-white border border-slate-200 rounded-2xl rounded-tl-md px-4 py-3 text-sm msg-md typing break-words';
-    bubble.innerHTML = '<span class="text-slate-400">合并中…</span>';
+    bubble.className = 'bubble-asst msg-md typing';
+    bubble.innerHTML = '<span class="text-stone-400">合并中…</span>';
     wrap.appendChild(bubble);
     messagesEl.appendChild(wrap);
     scrollToBottom();
